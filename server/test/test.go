@@ -18,7 +18,12 @@ func TestServerConfig() {
 		if v.Mode == "udp" {
 			isInArr(&postUdpArr, v.Port, v.Remark, "udp")
 		} else if v.Port != 0 {
-
+			if v.Mode == "httpProxy" {
+				if !common.InIntArr(postTcpArr, v.Port) {
+					isInArr(&postTcpArr, v.Port, "http proxy share port", "tcp")
+				}
+				return true
+			}
 			isInArr(&postTcpArr, v.Port, v.Remark, "tcp")
 		}
 		return true
@@ -40,7 +45,7 @@ func TestServerConfig() {
 		}
 	}
 
-	if p := beego.AppConfig.String("httpProxyPort"); p != "" {
+	if p := beego.AppConfig.String("http_proxy_port"); p != "" {
 		if port, err := strconv.Atoi(p); err != nil {
 			log.Fatalln("get http port error:", err)
 		} else {

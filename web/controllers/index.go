@@ -105,12 +105,25 @@ func (s *IndexController) Add() {
 			StripPre:  s.getEscapeString("strip_pre"),
 			Flow:      &file.Flow{},
 		}
-		if !tool.TestServerPort(t.Port, t.Mode) {
-			s.AjaxErr("The port cannot be opened because it may has been occupied or is no longer allowed.")
-		}
 		var err error
 		if t.Client, err = file.GetDb().GetClient(s.GetIntNoErr("client_id")); err != nil {
 			s.AjaxErr(err.Error())
+		}
+		if t.Mode == "httpProxy" && t.Port == 0 {
+			if p, err := beego.AppConfig.Int("http_proxy_port"); err == nil && p > 0 {
+				t.Port = p
+			}
+		}
+		if t.Mode == "httpProxy" && t.Port == 0 {
+			s.AjaxErr("http proxy port is not configured")
+		}
+		if t.Mode != "httpProxy" {
+			if !tool.TestServerPort(t.Port, t.Mode) {
+				s.AjaxErr("The port cannot be opened because it may has been occupied or is no longer allowed.")
+			}
+		}
+		if t.Mode == "httpProxy" && (t.Client == nil || t.Client.Cnf == nil || t.Client.Cnf.U == "") {
+			s.AjaxErr("basic_username is required for http proxy")
 		}
 		if t.Client.MaxTunnelNum != 0 && t.Client.GetTunnelNum() >= t.Client.MaxTunnelNum {
 			s.AjaxErr("The number of tunnels exceeds the limit")
@@ -157,15 +170,28 @@ func (s *IndexController) Edit() {
 			} else {
 				t.Client = client
 			}
-			if s.GetIntNoErr("port") != t.Port {
-				if !tool.TestServerPort(s.GetIntNoErr("port"), t.Mode) {
+			newMode := s.getEscapeString("type")
+			newPort := s.GetIntNoErr("port")
+			if newMode == "httpProxy" && newPort == 0 {
+				if p, err := beego.AppConfig.Int("http_proxy_port"); err == nil && p > 0 {
+					newPort = p
+				}
+			}
+			if newMode == "httpProxy" && newPort == 0 {
+				s.AjaxErr("http proxy port is not configured")
+			}
+			if newMode != "httpProxy" && (newPort != t.Port || newMode != t.Mode) {
+				if !tool.TestServerPort(newPort, newMode) {
 					s.AjaxErr("The port cannot be opened because it may has been occupied or is no longer allowed.")
 					return
 				}
-				t.Port = s.GetIntNoErr("port")
 			}
+			if newMode == "httpProxy" && (t.Client == nil || t.Client.Cnf == nil || t.Client.Cnf.U == "") {
+				s.AjaxErr("basic_username is required for http proxy")
+			}
+			t.Port = newPort
+			t.Mode = newMode
 			t.ServerIp = s.getEscapeString("server_ip")
-			t.Mode = s.getEscapeString("type")
 			t.Target = &file.Target{TargetStr: s.getEscapeString("target")}
 			t.Password = s.getEscapeString("password")
 			t.Id = id

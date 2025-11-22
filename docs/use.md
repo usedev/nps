@@ -144,6 +144,8 @@ server_port=9003
 ---|---
 mode | httpProxy
 server_port | 在服务端的代理端口
+
+httpProxy 模式现在会根据 `basic_username` 来转发，请求会共享同一个服务端 `http_proxy_port`（客户端无需再配置 server_port），当多个客户端使用同一用户名时会进行轮询转发，支持 http/https 代理。
 #### socks5代理模式
 
 ```ini

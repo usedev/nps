@@ -89,7 +89,7 @@ func (s *Bridge) StartTunnel() error {
 	return nil
 }
 
-//get health information form client
+// get health information form client
 func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn) {
 	for {
 		if info, status, err := c.GetHealthInfo(); err != nil {
@@ -154,7 +154,7 @@ func (s *Bridge) GetHealthFromClient(id int, c *conn.Conn) {
 	s.DelClient(id)
 }
 
-//验证失败，返回错误验证flag，并且关闭连接
+// 验证失败，返回错误验证flag，并且关闭连接
 func (s *Bridge) verifyError(c *conn.Conn) {
 	c.Write([]byte(common.VERIFY_EER))
 }
@@ -224,7 +224,7 @@ func (s *Bridge) DelClient(id int) {
 	}
 }
 
-//use different
+// use different
 func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string) {
 	isPub := file.GetDb().IsPubClient(id)
 	switch typeVal {
@@ -303,7 +303,7 @@ func (s *Bridge) typeDeal(typeVal string, c *conn.Conn, id int, vs string) {
 	return
 }
 
-//register ip
+// register ip
 func (s *Bridge) register(c *conn.Conn) {
 	var hour int32
 	if err := binary.Read(c, binary.LittleEndian, &hour); err == nil {
@@ -387,7 +387,7 @@ func (s *Bridge) ping() {
 	}
 }
 
-//get config and add task from client config
+// get config and add task from client config
 func (s *Bridge) getConfig(c *conn.Conn, isPub bool, client *file.Client) {
 	var fail bool
 loop:
@@ -479,9 +479,16 @@ loop:
 					ports = append(ports, 0)
 				}
 				if len(ports) == 0 {
-					fail = true
-					c.WriteAddFail()
-					break loop
+					if t.Mode == "httpProxy" {
+						if port, err := beego.AppConfig.Int("http_proxy_port"); err == nil && port > 0 {
+							ports = []int{port}
+						}
+					}
+					if len(ports) == 0 {
+						fail = true
+						c.WriteAddFail()
+						break loop
+					}
 				}
 				for i := 0; i < len(ports); i++ {
 					tl := new(file.Tunnel)
@@ -516,7 +523,8 @@ loop:
 							c.WriteAddFail()
 							break loop
 						}
-						if b := tool.TestServerPort(tl.Port, tl.Mode); !b && t.Mode != "secret" && t.Mode != "p2p" {
+						skipPortTest := t.Mode == "httpProxy" || (t.Mode == "httpProxy" && hasHttpProxyPort(tl.Port))
+						if b := tool.TestServerPort(tl.Port, tl.Mode); !b && t.Mode != "secret" && t.Mode != "p2p" && !skipPortTest {
 							fail = true
 							c.WriteAddFail()
 							break loop
@@ -533,4 +541,17 @@ loop:
 		s.DelClient(client.Id)
 	}
 	c.Close()
+}
+
+func hasHttpProxyPort(port int) bool {
+	exist := false
+	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
+		v := value.(*file.Tunnel)
+		if v.Mode == "httpProxy" && v.Port == port {
+			exist = true
+			return false
+		}
+		return true
+	})
+	return exist
 }

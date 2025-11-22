@@ -32,7 +32,7 @@ func init() {
 	RunList = sync.Map{}
 }
 
-//init task from db
+// init task from db
 func InitFromCsv() {
 	//Add a public password
 	if vkey := beego.AppConfig.String("public_vkey"); vkey != "" {
@@ -50,7 +50,7 @@ func InitFromCsv() {
 	})
 }
 
-//get bridge command
+// get bridge command
 func DealBridgeTask() {
 	for {
 		select {
@@ -84,7 +84,7 @@ func DealBridgeTask() {
 	}
 }
 
-//start a new server
+// start a new server
 func StartNewServer(bridgePort int, cnf *file.Tunnel, bridgeType string, bridgeDisconnect int) {
 	Bridge = bridge.NewTunnel(bridgePort, bridgeType, common.GetBoolByStr(beego.AppConfig.String("ip_limit")), RunList, bridgeDisconnect)
 	go func() {
@@ -122,7 +122,7 @@ func dealClientFlow() {
 	}
 }
 
-//new a server by mode name
+// new a server by mode name
 func NewMode(Bridge *bridge.Bridge, c *file.Tunnel) proxy.Service {
 	var service proxy.Service
 	switch c.Mode {
@@ -131,19 +131,21 @@ func NewMode(Bridge *bridge.Bridge, c *file.Tunnel) proxy.Service {
 	case "socks5":
 		service = proxy.NewSock5ModeServer(Bridge, c)
 	case "httpProxy":
-		service = proxy.NewTunnelModeServer(proxy.ProcessHttp, Bridge, c)
+		service = proxy.NewHttpProxyService(Bridge, c)
 	case "tcpTrans":
 		service = proxy.NewTunnelModeServer(proxy.HandleTrans, Bridge, c)
 	case "udp":
 		service = proxy.NewUdpModeServer(Bridge, c)
 	case "webServer":
 		InitFromCsv()
-		t := &file.Tunnel{
-			Port:   0,
-			Mode:   "httpHostServer",
-			Status: true,
+		if beego.AppConfig.DefaultBool("http_host_enable", false) {
+			t := &file.Tunnel{
+				Port:   0,
+				Mode:   "httpHostServer",
+				Status: true,
+			}
+			AddTask(t)
 		}
-		AddTask(t)
 		service = proxy.NewWebServer(Bridge)
 	case "httpHostServer":
 		httpPort, _ := beego.AppConfig.Int("http_proxy_port")
@@ -156,7 +158,7 @@ func NewMode(Bridge *bridge.Bridge, c *file.Tunnel) proxy.Service {
 	return service
 }
 
-//stop server
+// stop server
 func StopServer(id int) error {
 	//if v, ok := RunList[id]; ok {
 	if v, ok := RunList.Load(id); ok {
@@ -181,7 +183,7 @@ func StopServer(id int) error {
 	return errors.New("task is not running")
 }
 
-//add task
+// add task
 func AddTask(t *file.Tunnel) error {
 	if t.Mode == "secret" || t.Mode == "p2p" {
 		logs.Info("secret task %s start ", t.Remark)
@@ -189,9 +191,27 @@ func AddTask(t *file.Tunnel) error {
 		RunList.Store(t.Id, nil)
 		return nil
 	}
-	if b := tool.TestServerPort(t.Port, t.Mode); !b && t.Mode != "httpHostServer" {
-		logs.Error("taskId %d start error port %d open failed", t.Id, t.Port)
-		return errors.New("the port open error")
+	if t.Mode == "httpProxy" {
+		if p, err := beego.AppConfig.Int("http_proxy_port"); err == nil && p > 0 {
+			t.Port = p
+		}
+	}
+	if t.Mode == "httpProxy" && (t.Client == nil || t.Client.Cnf == nil || t.Client.Cnf.U == "") {
+		logs.Error("taskId %d start error, http proxy requires basic_username", t.Id)
+		return errors.New("the basic_username is required")
+	}
+	needPortTest := t.Mode != "httpHostServer"
+	if t.Mode == "httpProxy" && proxy.HasHttpProxyPortServer(t.ServerIp, t.Port) {
+		needPortTest = false
+	}
+	if t.Mode == "httpProxy" {
+		needPortTest = false
+	}
+	if needPortTest {
+		if b := tool.TestServerPort(t.Port, t.Mode); !b {
+			logs.Error("taskId %d start error port %d open failed", t.Id, t.Port)
+			return errors.New("the port open error")
+		}
 	}
 	if minute, err := beego.AppConfig.Int("flow_store_interval"); err == nil && minute > 0 {
 		go flowSession(time.Minute * time.Duration(minute))
@@ -214,7 +234,7 @@ func AddTask(t *file.Tunnel) error {
 	return nil
 }
 
-//start task
+// start task
 func StartTask(id int) error {
 	if t, err := file.GetDb().GetTask(id); err != nil {
 		return err
@@ -226,7 +246,7 @@ func StartTask(id int) error {
 	return nil
 }
 
-//delete task
+// delete task
 func DelTask(id int) error {
 	//if _, ok := RunList[id]; ok {
 	if _, ok := RunList.Load(id); ok {
@@ -237,7 +257,7 @@ func DelTask(id int) error {
 	return file.GetDb().DelTask(id)
 }
 
-//get task list by page num
+// get task list by page num
 func GetTunnel(start, length int, typeVal string, clientId int, search string) ([]*file.Tunnel, int) {
 	list := make([]*file.Tunnel, 0)
 	var cnt int
@@ -273,7 +293,7 @@ func GetTunnel(start, length int, typeVal string, clientId int, search string) (
 	return list, cnt
 }
 
-//get client list
+// get client list
 func GetClientList(start, length int, search, sort, order string, clientId int) (list []*file.Client, cnt int) {
 	list, cnt = file.GetDb().GetClientList(start, length, search, sort, order, clientId)
 	dealClientData()
@@ -312,7 +332,7 @@ func dealClientData() {
 	return
 }
 
-//delete all host and tasks by client id
+// delete all host and tasks by client id
 func DelTunnelAndHostByClientId(clientId int, justDelNoStore bool) {
 	var ids []int
 	file.GetDb().JsonDb.Tasks.Range(func(key, value interface{}) bool {
@@ -344,7 +364,7 @@ func DelTunnelAndHostByClientId(clientId int, justDelNoStore bool) {
 	}
 }
 
-//close the client
+// close the client
 func DelClientConnect(clientId int) {
 	Bridge.DelClient(clientId)
 }
