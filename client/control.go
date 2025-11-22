@@ -95,6 +95,7 @@ func StartFromFile(path string) {
 		os.Exit(0)
 	}
 	logs.Info("Loading configuration file %s successfully", path)
+	originVKey := cnf.CommonConfig.VKey
 
 re:
 	if first || cnf.CommonConfig.AutoReconnection {
@@ -109,6 +110,10 @@ re:
 	c, err := NewConn(cnf.CommonConfig.Tp, cnf.CommonConfig.VKey, cnf.CommonConfig.Server, common.WORK_CONFIG, cnf.CommonConfig.ProxyUrl)
 	if err != nil {
 		logs.Error(err)
+		// vkey失效时回退到原始配置的vkey，重新获取一个完整的新客户端
+		if strings.Contains(err.Error(), "Validation key") {
+			cnf.CommonConfig.VKey = originVKey
+		}
 		goto re
 	}
 	var isPub bool
@@ -251,7 +256,7 @@ func NewConn(tp string, vkey string, server string, connType string, proxyUrl st
 	return c, nil
 }
 
-//http proxy connection
+// http proxy connection
 func NewHttpProxyConn(url *url.URL, remoteAddr string) (net.Conn, error) {
 	req, err := http.NewRequest("CONNECT", "http://"+remoteAddr, nil)
 	if err != nil {
@@ -278,7 +283,7 @@ func NewHttpProxyConn(url *url.URL, remoteAddr string) (net.Conn, error) {
 	return proxyConn, nil
 }
 
-//get a basic auth string
+// get a basic auth string
 func basicAuth(username, password string) string {
 	auth := username + ":" + password
 	return base64.StdEncoding.EncodeToString([]byte(auth))
